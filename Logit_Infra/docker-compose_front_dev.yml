@@ -1,0 +1,80 @@
+version: '3.8'
+
+services:
+  llmserver:
+    container_name: llmserver
+    build: ./llmserver  # llmserver 디렉토리에서 Dockerfile을 빌드
+    ports:
+      - 8080:8080  # llmserver의 8080 포트를 외부로 노출
+    volumes:
+      - ./llmserver/Logit_LANGCHAIN:/app  # LLM 서버 코드와 연결
+    networks:
+      - logit_net  # 같은 네트워크에 연결
+    env_file:
+      - ./.env  # 환경 변수 파일
+    restart: always
+
+  backend:
+    container_name: backend
+    build: ./backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend/Logit_BE:/app
+    networks:
+      - logit_net
+    env_file:
+      - ./.env
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    container_name: db
+    image: mysql
+    expose:
+      - "5432"
+    volumes:
+      - volume-db:/var/lib/mysql
+    networks:
+      - logit_net
+    env_file:
+      - ./.env
+    restart: always
+    healthcheck:
+      test: [ "CMD", "mysqladmin", "ping", "-u", "root", "--password=${MYSQL_ROOT_PASSWORD}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  react:
+    container_name: react-dev
+    build: 
+      context: ./frontend/
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend/Logit_FE:/app  # 컨테이너 내 /app에 마운트
+      - /app/node_modules
+    networks:
+      - logit_net
+    environment:
+      - WATCHPACK_POLLING=true
+      - CHOKIDAR_USEPOLLING=true
+    restart: always
+    depends_on:
+      - backend
+      - db
+    command: ["yarn", "dev"]
+
+networks:
+  logit_net:
+    name: logit_net
+    driver: bridge
+
+volumes:
+  volume-db:
+    name: volume-db
+    driver: local
